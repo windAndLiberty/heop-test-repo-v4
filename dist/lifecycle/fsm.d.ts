@@ -4,7 +4,7 @@ import { ProvenanceLogger } from '../ssot/provenance.js';
  * Lifecycle Engine: Finite State Machine (FSM) for project lifecycle management
  * Automatically transitions project states based on task completion and criteria
  */
-export type ProjectState = 'CREATED' | 'PLANNED' | 'BOOTSTRAPPED' | 'INCREMENTAL_DEV' | 'TESTING' | 'DELIVERED' | 'ARCHIVED';
+export type ProjectState = 'CREATED' | 'PLANNED' | 'BOOTSTRAPPED' | 'INCREMENTAL_DEV' | 'TESTING' | 'DELIVERED' | 'ARCHIVED' | 'ADOPTED';
 export interface StateTransition {
     from: ProjectState;
     to: ProjectState;

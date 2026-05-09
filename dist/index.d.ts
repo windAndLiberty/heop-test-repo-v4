@@ -39,6 +39,16 @@ export declare class HEOPPlugin {
     private registerLifecycleHooks;
     start(): Promise<void>;
     initProject(args: any): Promise<any>;
+    /**
+     * Adopt an existing project into HEOP SSOT
+     * Scans codebase, extracts decisions from code/comments, records initial state
+     * Skips cold-start (CREATED -> PLANNED -> BOOTSTRAPPED), enters ADOPTED state
+     */
+    adoptProject(args: any): Promise<any>;
+    private scanCodebase;
+    private detectTechStack;
+    private inferDecisions;
+    private getGitInfo;
     deepcodeBootstrap(args: any): Promise<any>;
     claudeCodeIncremental(args: any): Promise<any>;
     kimiExecute(args: any): Promise<any>;

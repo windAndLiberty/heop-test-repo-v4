@@ -21,6 +21,7 @@ import { ClaudeCodeBridge } from './bridges/claude-code.js';
 import { KimiBridge } from './bridges/kimi.js';
 import { GitAutomation } from './automation/git.js';
 import { IssueAutomation } from './automation/issue.js';
+import * as path from 'path';
 
 export interface HEOPConfig {
   ssotDir: string;
@@ -360,6 +361,259 @@ export class HEOPPlugin {
     return {
       content: [{ type: 'text', text: JSON.stringify({ success: true, project_id, state: 'CREATED' }) }],
     };
+  }
+
+  /**
+   * Adopt an existing project into HEOP SSOT
+   * Scans codebase, extracts decisions from code/comments, records initial state
+   * Skips cold-start (CREATED -> PLANNED -> BOOTSTRAPPED), enters ADOPTED state
+   */
+  async adoptProject(args: any): Promise<any> {
+    const { project_id, name, working_dir, description, tech_stack } = args;
+
+    const fs = require('fs');
+    if (!working_dir || !fs.existsSync(working_dir)) {
+      throw new Error(`Working directory ${working_dir} does not exist`);
+    }
+
+    // 1. Create project in SSOT with ADOPTED state
+    this.store.createProject(project_id, name || path.basename(working_dir), description);
+    this.store.updateProjectState(project_id, 'ADOPTED');
+
+    // 2. Record adoption fact
+    this.store.insertFact(project_id, {
+      entity: 'project',
+      attribute: 'adopted_from',
+      value: working_dir,
+      source: 'human',
+      value_type: 'string',
+    });
+
+    // 3. Scan codebase structure
+    const structure = this.scanCodebase(working_dir);
+    this.store.insertFact(project_id, {
+      entity: 'project',
+      attribute: 'codebase_scanned',
+      value: JSON.stringify(structure),
+      source: 'hermes',
+      value_type: 'json',
+    });
+
+    // 4. Extract tech stack from package files
+    const detectedStack = this.detectTechStack(working_dir);
+    const finalStack = tech_stack || detectedStack;
+    this.store.insertFact(project_id, {
+      entity: 'project',
+      attribute: 'tech_stack',
+      value: JSON.stringify(finalStack),
+      source: 'hermes',
+      value_type: 'json',
+    });
+
+    // 5. Infer architecture decisions from code
+    const inferredDecisions = this.inferDecisions(working_dir, finalStack);
+    for (const decision of inferredDecisions) {
+      this.store.addDecision(
+        project_id,
+        decision.context,
+        decision.choice,
+        decision.rationale,
+        decision.confidence || 0.7,
+        'hermes-inferred',
+      );
+    }
+
+    // 6. Record git state if present
+    const gitInfo = this.getGitInfo(working_dir);
+    if (gitInfo) {
+      this.store.insertFact(project_id, {
+        entity: 'project',
+        attribute: 'git_state',
+        value: JSON.stringify(gitInfo),
+        source: 'hermes',
+        value_type: 'json',
+      });
+    }
+
+    // 7. Log provenance
+    const factId = this.store.insertFact(project_id, {
+      entity: 'project',
+      attribute: 'state',
+      value: 'ADOPTED',
+      source: 'hermes-lifecycle',
+      value_type: 'string',
+    });
+    this.provenance.logProvenance(
+      project_id,
+      factId,
+      'CREATE',
+      'human',
+      `Adopted existing project from ${working_dir}`,
+      `Tech stack: ${JSON.stringify(finalStack)}, Inferred decisions: ${inferredDecisions.length}`
+    );
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          success: true,
+          project_id,
+          state: 'ADOPTED',
+          working_dir,
+          tech_stack: finalStack,
+          codebase_files: structure.files.length,
+          inferred_decisions: inferredDecisions.length,
+          git_commits: gitInfo?.commit_count || 0,
+          message: 'Project adopted. Ready for incremental development.',
+        }, null, 2),
+      }],
+    };
+  }
+
+  private scanCodebase(workingDir: string): any {
+    const fs = require('fs');
+    const path = require('path');
+    const files: string[] = [];
+    const dirs: string[] = [];
+
+    const scan = (dir: string, depth: number = 0) => {
+      if (depth > 3) return; // Limit depth
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'target') continue;
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            dirs.push(path.relative(workingDir, fullPath));
+            scan(fullPath, depth + 1);
+          } else {
+            files.push(path.relative(workingDir, fullPath));
+          }
+        }
+      } catch {
+        // Ignore permission errors
+      }
+    };
+
+    scan(workingDir);
+    return { files, dirs, root: workingDir, scanned_at: new Date().toISOString() };
+  }
+
+  private detectTechStack(workingDir: string): any {
+    const fs = require('fs');
+    const path = require('path');
+    const stack: any = {};
+
+    // Detect from package files
+    if (fs.existsSync(path.join(workingDir, 'package.json'))) {
+      const pkg = JSON.parse(fs.readFileSync(path.join(workingDir, 'package.json'), 'utf-8'));
+      stack.language = 'javascript';
+      stack.framework = pkg.dependencies?.next ? 'next' :
+                        pkg.dependencies?.react ? 'react' :
+                        pkg.dependencies?.express ? 'express' :
+                        pkg.dependencies?.fastify ? 'fastify' : 'node';
+      stack.package_manager = fs.existsSync(path.join(workingDir, 'pnpm-lock.yaml')) ? 'pnpm' :
+                              fs.existsSync(path.join(workingDir, 'yarn.lock')) ? 'yarn' : 'npm';
+    }
+
+    if (fs.existsSync(path.join(workingDir, 'Cargo.toml'))) {
+      stack.language = 'rust';
+      const cargo = fs.readFileSync(path.join(workingDir, 'Cargo.toml'), 'utf-8');
+      stack.framework = cargo.includes('axum') ? 'axum' :
+                        cargo.includes('actix') ? 'actix-web' :
+                        cargo.includes('rocket') ? 'rocket' : 'rust';
+    }
+
+    if (fs.existsSync(path.join(workingDir, 'go.mod'))) {
+      stack.language = 'go';
+    }
+
+    if (fs.existsSync(path.join(workingDir, 'requirements.txt')) || fs.existsSync(path.join(workingDir, 'pyproject.toml'))) {
+      stack.language = 'python';
+    }
+
+    // Detect database
+    if (fs.existsSync(path.join(workingDir, 'prisma'))) stack.database = 'prisma';
+    else if (fs.existsSync(path.join(workingDir, 'migrations'))) stack.database = 'sqlx';
+    else stack.database = 'unknown';
+
+    return stack;
+  }
+
+  private inferDecisions(workingDir: string, techStack: any): any[] {
+    const fs = require('fs');
+    const path = require('path');
+    const decisions: any[] = [];
+
+    // Infer from tech stack
+    if (techStack.language) {
+      decisions.push({
+        context: 'Programming Language',
+        choice: techStack.language,
+        rationale: `Detected from project files (${techStack.language === 'javascript' ? 'package.json' : techStack.language === 'rust' ? 'Cargo.toml' : 'project files'})`,
+        confidence: 0.95,
+      });
+    }
+
+    if (techStack.framework) {
+      decisions.push({
+        context: 'Web Framework',
+        choice: techStack.framework,
+        rationale: `Detected from dependencies`,
+        confidence: 0.9,
+      });
+    }
+
+    // Infer from directory structure
+    if (fs.existsSync(path.join(workingDir, 'src', 'routes')) || fs.existsSync(path.join(workingDir, 'app', 'api'))) {
+      decisions.push({
+        context: 'Architecture Pattern',
+        choice: 'route-based',
+        rationale: 'Detected routes/ or app/api/ directory structure',
+        confidence: 0.8,
+      });
+    }
+
+    if (fs.existsSync(path.join(workingDir, 'docker-compose.yml')) || fs.existsSync(path.join(workingDir, 'Dockerfile'))) {
+      decisions.push({
+        context: 'Deployment',
+        choice: 'containerized',
+        rationale: 'Detected Docker configuration files',
+        confidence: 0.85,
+      });
+    }
+
+    // Infer from config files
+    if (fs.existsSync(path.join(workingDir, '.github', 'workflows'))) {
+      decisions.push({
+        context: 'CI/CD',
+        choice: 'github-actions',
+        rationale: 'Detected .github/workflows directory',
+        confidence: 0.9,
+      });
+    }
+
+    return decisions;
+  }
+
+  private getGitInfo(workingDir: string): any {
+    const { spawn } = require('child_process');
+    try {
+      const commitCount = spawn('git', ['rev-list', '--count', 'HEAD'], { cwd: workingDir, encoding: 'utf-8' });
+      const branch = spawn('git', ['branch', '--show-current'], { cwd: workingDir, encoding: 'utf-8' });
+      const remote = spawn('git', ['remote', '-v'], { cwd: workingDir, encoding: 'utf-8' });
+
+      // Synchronous read for simplicity
+      const { execSync } = require('child_process');
+      return {
+        commit_count: parseInt(execSync('git rev-list --count HEAD', { cwd: workingDir, encoding: 'utf-8' }).trim()),
+        branch: execSync('git branch --show-current', { cwd: workingDir, encoding: 'utf-8' }).trim(),
+        has_remote: execSync('git remote', { cwd: workingDir, encoding: 'utf-8' }).trim().length > 0,
+        last_commit: execSync('git log -1 --format=%H', { cwd: workingDir, encoding: 'utf-8' }).trim(),
+      };
+    } catch {
+      return null;
+    }
   }
 
   async deepcodeBootstrap(args: any): Promise<any> {

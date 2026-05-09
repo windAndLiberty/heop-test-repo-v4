@@ -27,6 +27,7 @@ class LifecycleEngine {
     }
     defineTransitions() {
         return [
+            // --- 冷启动路径（空项目） ---
             {
                 from: 'CREATED',
                 to: 'PLANNED',
@@ -59,13 +60,25 @@ class LifecycleEngine {
                     }
                 },
             },
+            // --- 现有项目路径（跳过冷启动） ---
+            {
+                from: 'ADOPTED',
+                to: 'INCREMENTAL_DEV',
+                condition: '现有项目已接纳，代码库已扫描，可直接增量开发',
+                evaluator: (projectId, store) => {
+                    // 只要已记录代码扫描事实，即可进入增量开发
+                    const facts = store.getCurrentFacts(projectId, 'project', 'codebase_scanned');
+                    return facts.length > 0;
+                },
+            },
+            // --- 通用路径 ---
             {
                 from: 'BOOTSTRAPPED',
                 to: 'INCREMENTAL_DEV',
                 condition: '首个功能需求委派给Claude Code',
                 evaluator: (projectId, store) => {
                     const tasks = store.getTasks(projectId, 10);
-                    return tasks.some((t) => t.agent_type === 'claude' && t.status === 'COMPLETED');
+                    return tasks.some((t) => (t.agent_type === 'claude' || t.agent_type === 'kimi') && t.status === 'COMPLETED');
                 },
             },
             {

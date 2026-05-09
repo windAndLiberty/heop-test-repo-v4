@@ -80,7 +80,7 @@ class SchemaManager {
         name TEXT NOT NULL,
         state TEXT CHECK(state IN (
           'CREATED','PLANNED','BOOTSTRAPPED',
-          'INCREMENTAL_DEV','TESTING','DELIVERED','ARCHIVED'
+          'INCREMENTAL_DEV','TESTING','DELIVERED','ARCHIVED','ADOPTED'
         )),
         goal TEXT,
         tech_stack_json TEXT,
