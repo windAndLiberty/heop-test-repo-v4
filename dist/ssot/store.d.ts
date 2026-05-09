@@ -30,7 +30,7 @@ export interface TaskRecord {
     id: string;
     project_id: string;
     requirement_id?: string;
-    agent_type: 'deepcode' | 'claude' | 'hermes';
+    agent_type: 'deepcode' | 'claude' | 'hermes' | 'kimi';
     status: string;
     input_json?: string;
     output_json?: string;

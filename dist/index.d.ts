@@ -28,6 +28,7 @@ export declare class HEOPPlugin {
     private lifecycle;
     private deepcodeBridge;
     private claudeCodeBridge;
+    private kimiBridge;
     private gitAuto;
     private issueAuto;
     private config;
@@ -40,6 +41,7 @@ export declare class HEOPPlugin {
     initProject(args: any): Promise<any>;
     deepcodeBootstrap(args: any): Promise<any>;
     claudeCodeIncremental(args: any): Promise<any>;
+    kimiExecute(args: any): Promise<any>;
     gitMilestoneCommit(args: any): Promise<any>;
     createRemoteRepo(args: any): Promise<any>;
     ssotQuery(args: any): Promise<any>;

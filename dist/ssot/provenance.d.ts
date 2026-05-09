@@ -7,7 +7,7 @@ export interface ProvenanceRecord {
     id?: string;
     fact_id: string;
     operation: 'CREATE' | 'INVALIDATE' | 'UPDATE';
-    actor: 'deepcode' | 'claude' | 'hermes' | 'human';
+    actor: 'deepcode' | 'claude' | 'hermes' | 'kimi' | 'human';
     input_context: string;
     reasoning_chain?: string;
     timestamp?: number;
@@ -31,9 +31,9 @@ export declare class ProvenanceLogger {
     /**
      * Log fact creation with full context
      */
-    logProvenance(projectId: string, factId: string, operation: 'CREATE' | 'INVALIDATE' | 'UPDATE', actor: 'deepcode' | 'claude' | 'hermes' | 'human', inputContext: string, reasoningChain?: string): string;
+    logProvenance(projectId: string, factId: string, operation: 'CREATE' | 'INVALIDATE' | 'UPDATE', actor: 'deepcode' | 'claude' | 'hermes' | 'kimi' | 'human', inputContext: string, reasoningChain?: string): string;
     getProvenance(projectId: string, factId: string): any[];
-    logFactInvalidation(projectId: string, factId: string, actor: 'deepcode' | 'claude' | 'hermes' | 'human', inputContext: string): string;
+    logFactInvalidation(projectId: string, factId: string, actor: 'deepcode' | 'claude' | 'hermes' | 'kimi' | 'human', inputContext: string): string;
     /**
      * Generate human-readable explanation for a decision
      */

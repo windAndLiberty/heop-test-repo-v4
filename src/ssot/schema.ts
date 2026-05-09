@@ -117,7 +117,7 @@ export class SchemaManager {
         id TEXT PRIMARY KEY,
         project_id TEXT,
         requirement_id TEXT,
-        agent_type TEXT NOT NULL CHECK(agent_type IN ('deepcode','claude','hermes')),
+        agent_type TEXT NOT NULL CHECK(agent_type IN ('deepcode','claude','hermes','kimi')),
         status TEXT DEFAULT 'QUEUED',
         input_json TEXT,
         output_json TEXT,

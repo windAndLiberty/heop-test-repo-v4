@@ -18,6 +18,7 @@ import { LifecycleEngine } from './lifecycle/fsm.js';
 import { TransitionRules } from './lifecycle/transitions.js';
 import { DeepCodeBridge } from './bridges/deepcode.js';
 import { ClaudeCodeBridge } from './bridges/claude-code.js';
+import { KimiBridge } from './bridges/kimi.js';
 import { GitAutomation } from './automation/git.js';
 import { IssueAutomation } from './automation/issue.js';
 
@@ -40,6 +41,7 @@ export class HEOPPlugin {
   private lifecycle: LifecycleEngine;
   private deepcodeBridge: DeepCodeBridge;
   private claudeCodeBridge: ClaudeCodeBridge;
+  private kimiBridge: KimiBridge;
   private gitAuto: GitAutomation;
   private issueAuto: IssueAutomation;
   private config: HEOPConfig;
@@ -54,6 +56,7 @@ export class HEOPPlugin {
     this.lifecycle = new LifecycleEngine(this.store, this.provenance);
     this.deepcodeBridge = new DeepCodeBridge(this.store, this.provenance, config);
     this.claudeCodeBridge = new ClaudeCodeBridge(this.store, this.provenance, config);
+    this.kimiBridge = new KimiBridge(this.store, this.provenance, config);
     this.gitAuto = new GitAutomation(this.store, config);
     this.issueAuto = new IssueAutomation(this.store, config);
 
@@ -112,6 +115,43 @@ export class HEOPPlugin {
             },
           },
           required: ['project_id', 'task_id', 'goal'],
+        },
+      },
+      {
+        name: 'kimi_execute',
+        description: '直接调用 Kimi API 进行代码生成或增量开发。不依赖 Claude Code CLI，轻量快速。',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project_id: { type: 'string', description: '项目唯一标识' },
+            task_id: { type: 'string', description: '任务唯一标识（可选）' },
+            goal: { type: 'string', description: '自然语言任务描述' },
+            context_facts_query: { 
+              type: 'string', 
+              description: 'SSOT查询语句，提取相关事实作为上下文' 
+            },
+            readonly_files: { 
+              type: 'array', 
+              items: { type: 'string' },
+              description: '只读文件列表' 
+            },
+            model: { 
+              type: 'string', 
+              default: 'kimi-k2-0711-preview',
+              description: 'Kimi 模型名称' 
+            },
+            temperature: { 
+              type: 'number', 
+              default: 0.3,
+              description: '采样温度' 
+            },
+            max_tokens: { 
+              type: 'number', 
+              default: 8192,
+              description: '最大生成 token 数' 
+            },
+          },
+          required: ['project_id', 'goal'],
         },
       },
       {
@@ -212,6 +252,9 @@ export class HEOPPlugin {
           
           case 'claude_code_execute':
             return await this.claudeCodeBridge.execute(args as any);
+          
+          case 'kimi_execute':
+            return await this.kimiBridge.execute(args as any);
           
           case 'ssot_query':
             return await this.handleSSOTQuery(args as any);
@@ -325,6 +368,10 @@ export class HEOPPlugin {
 
   async claudeCodeIncremental(args: any): Promise<any> {
     return this.claudeCodeBridge.execute(args);
+  }
+
+  async kimiExecute(args: any): Promise<any> {
+    return this.kimiBridge.execute(args);
   }
 
   async gitMilestoneCommit(args: any): Promise<any> {

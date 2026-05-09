@@ -20,6 +20,7 @@ const deepcode_js_1 = require("./bridges/deepcode.js");
 Object.defineProperty(exports, "DeepCodeBridge", { enumerable: true, get: function () { return deepcode_js_1.DeepCodeBridge; } });
 const claude_code_js_1 = require("./bridges/claude-code.js");
 Object.defineProperty(exports, "ClaudeCodeBridge", { enumerable: true, get: function () { return claude_code_js_1.ClaudeCodeBridge; } });
+const kimi_js_1 = require("./bridges/kimi.js");
 const git_js_1 = require("./automation/git.js");
 Object.defineProperty(exports, "GitAutomation", { enumerable: true, get: function () { return git_js_1.GitAutomation; } });
 const issue_js_1 = require("./automation/issue.js");
@@ -32,6 +33,7 @@ class HEOPPlugin {
     lifecycle;
     deepcodeBridge;
     claudeCodeBridge;
+    kimiBridge;
     gitAuto;
     issueAuto;
     config;
@@ -44,6 +46,7 @@ class HEOPPlugin {
         this.lifecycle = new fsm_js_1.LifecycleEngine(this.store, this.provenance);
         this.deepcodeBridge = new deepcode_js_1.DeepCodeBridge(this.store, this.provenance, config);
         this.claudeCodeBridge = new claude_code_js_1.ClaudeCodeBridge(this.store, this.provenance, config);
+        this.kimiBridge = new kimi_js_1.KimiBridge(this.store, this.provenance, config);
         this.gitAuto = new git_js_1.GitAutomation(this.store, config);
         this.issueAuto = new issue_js_1.IssueAutomation(this.store, config);
         // Setup MCP Server
@@ -96,6 +99,43 @@ class HEOPPlugin {
                         },
                     },
                     required: ['project_id', 'task_id', 'goal'],
+                },
+            },
+            {
+                name: 'kimi_execute',
+                description: '直接调用 Kimi API 进行代码生成或增量开发。不依赖 Claude Code CLI，轻量快速。',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        project_id: { type: 'string', description: '项目唯一标识' },
+                        task_id: { type: 'string', description: '任务唯一标识（可选）' },
+                        goal: { type: 'string', description: '自然语言任务描述' },
+                        context_facts_query: {
+                            type: 'string',
+                            description: 'SSOT查询语句，提取相关事实作为上下文'
+                        },
+                        readonly_files: {
+                            type: 'array',
+                            items: { type: 'string' },
+                            description: '只读文件列表'
+                        },
+                        model: {
+                            type: 'string',
+                            default: 'kimi-k2-0711-preview',
+                            description: 'Kimi 模型名称'
+                        },
+                        temperature: {
+                            type: 'number',
+                            default: 0.3,
+                            description: '采样温度'
+                        },
+                        max_tokens: {
+                            type: 'number',
+                            default: 8192,
+                            description: '最大生成 token 数'
+                        },
+                    },
+                    required: ['project_id', 'goal'],
                 },
             },
             {
@@ -192,6 +232,8 @@ class HEOPPlugin {
                         return await this.deepcodeBridge.execute(args);
                     case 'claude_code_execute':
                         return await this.claudeCodeBridge.execute(args);
+                    case 'kimi_execute':
+                        return await this.kimiBridge.execute(args);
                     case 'ssot_query':
                         return await this.handleSSOTQuery(args);
                     case 'git_milestone_commit':
@@ -287,6 +329,9 @@ class HEOPPlugin {
     }
     async claudeCodeIncremental(args) {
         return this.claudeCodeBridge.execute(args);
+    }
+    async kimiExecute(args) {
+        return this.kimiBridge.execute(args);
     }
     async gitMilestoneCommit(args) {
         return this.gitAuto.milestoneCommit(args);

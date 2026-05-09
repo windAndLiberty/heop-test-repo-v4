@@ -9,7 +9,7 @@ export interface ProvenanceRecord {
   id?: string;
   fact_id: string;
   operation: 'CREATE' | 'INVALIDATE' | 'UPDATE';
-  actor: 'deepcode' | 'claude' | 'hermes' | 'human';
+  actor: 'deepcode' | 'claude' | 'hermes' | 'kimi' | 'human';
   input_context: string;
   reasoning_chain?: string;
   timestamp?: number;
@@ -121,7 +121,7 @@ export class ProvenanceLogger {
     projectId: string,
     factId: string,
     operation: 'CREATE' | 'INVALIDATE' | 'UPDATE',
-    actor: 'deepcode' | 'claude' | 'hermes' | 'human',
+    actor: 'deepcode' | 'claude' | 'hermes' | 'kimi' | 'human',
     inputContext: string,
     reasoningChain?: string
   ): string {
@@ -140,7 +140,7 @@ export class ProvenanceLogger {
   logFactInvalidation(
     projectId: string,
     factId: string,
-    actor: 'deepcode' | 'claude' | 'hermes' | 'human',
+    actor: 'deepcode' | 'claude' | 'hermes' | 'kimi' | 'human',
     inputContext: string
   ): string {
     return this.log(projectId, {
