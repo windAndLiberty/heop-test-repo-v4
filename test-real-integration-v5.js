@@ -1,5 +1,5 @@
 /**
- * 端到端真实集成测试 V4：使用 Direct API（绕过 MCP stdio）
+ * 端到端真实集成测试 V5：使用 Direct API（绕过 MCP stdio）
  * 测试目标：
  * 1. 初始化项目 → SSOT
  * 2. DeepCode Bridge (Claude bootstrap) 生成骨架
@@ -11,13 +11,13 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-const TEST_DIR = '/tmp/heop-real-test-v4';
-const SSOT_DIR = '/tmp/heop-real-test-ssot-v4';
-const PROJECT_ID = 'test-real-integration-v4';
-const REPO_NAME = 'heop-test-repo-v4';
+const TEST_DIR = '/tmp/heop-real-test-v5';
+const SSOT_DIR = '/tmp/heop-real-test-ssot-v5';
+const PROJECT_ID = 'test-real-integration-v5';
+const REPO_NAME = 'heop-test-repo-v5';
 
 async function runTest() {
-  console.log('=== HEOP Real Integration Test V4 (Direct API) ===\n');
+  console.log('=== HEOP Real Integration Test V5 (Direct API) ===\n');
 
   // Cleanup
   if (fs.existsSync(TEST_DIR)) fs.rmSync(TEST_DIR, { recursive: true });
@@ -27,7 +27,7 @@ async function runTest() {
 
   // Create PRD
   const prdPath = path.join(TEST_DIR, 'PRD.md');
-  fs.writeFileSync(prdPath, `# Test Project V4
+  fs.writeFileSync(prdPath, `# Test Project V5
 
 ## Overview
 A minimal HTTP API server for user authentication.
@@ -68,7 +68,7 @@ A minimal HTTP API server for user authentication.
   console.log('Step 1: Initialize project');
   const initRes = await plugin.initProject({
     project_id: PROJECT_ID,
-    name: 'Test Integration V4',
+    name: 'Test Integration V5',
     description: 'Testing remote git push + repo creation',
     requirements_dir: TEST_DIR,
     working_dir: TEST_DIR,
@@ -85,7 +85,6 @@ A minimal HTTP API server for user authentication.
     working_dir: TEST_DIR,
   });
   
-  // 60s timeout for bootstrap
   const bootstrapTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Bootstrap timeout')), 60000));
   
   let bootstrapRes;
@@ -107,7 +106,7 @@ A minimal HTTP API server for user authentication.
   const gitRes = await plugin.gitMilestoneCommit({
     project_id: PROJECT_ID,
     message_prefix: 'feat(bootstrap)',
-    milestone_name: 'v0.1.0-bootstrap-v4',
+    milestone_name: 'v0.1.0-bootstrap-v5',
     create_remote: true,
     remote_name: REPO_NAME,
     repo_visibility: 'public',
@@ -115,7 +114,7 @@ A minimal HTTP API server for user authentication.
     working_dir: TEST_DIR,
   });
   const gitText = gitRes.content[0].text;
-  console.log('Git result:', gitText.substring(0, 800));
+  console.log('Git result:', gitText.substring(0, 1000));
 
   // Step 5: Verify remote repo
   console.log('\nStep 5: Verify remote repository');
@@ -160,7 +159,7 @@ A minimal HTTP API server for user authentication.
   console.log('\n=== Test Complete ===');
 
   // Summary
-  const success = gitText.includes('success');
+  const success = gitText.includes('success') && gitText.includes('remote_url');
   console.log(`\nResult: ${success ? 'PASS' : 'FAIL'}`);
   if (success) {
     console.log(`Remote repo: https://github.com/windAndLiberty/${REPO_NAME}`);

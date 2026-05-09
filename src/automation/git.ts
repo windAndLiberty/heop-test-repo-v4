@@ -58,7 +58,6 @@ export class GitAutomation {
     }
 
     const cwd = working_dir || process.cwd();
-    console.log(`[GitAutomation] milestoneCommit: cwd=${cwd}, project_id=${project_id}`);
 
     try {
       // Ensure git repo exists
@@ -134,8 +133,25 @@ export class GitAutomation {
           visibility: visibility as 'public' | 'private',
           push_after_create: false, // We'll push separately
         });
-        const createData = JSON.parse(createResult.content[0].text);
+        // Handle both JSON string and already-parsed content
+        let createData: any;
+        const createText = createResult.content?.[0]?.text || createResult;
+        try {
+          createData = JSON.parse(createText);
+        } catch {
+          createData = { success: false, raw: createText };
+        }
         remoteUrl = createData.remote_url;
+        // Re-check if remote was added by createRemoteRepo
+        if (!remoteUrl) {
+          try {
+            const remotes = await this.gitSpawnWithOutput(cwd, ['remote', '-v']);
+            const match = remotes.match(/origin\s+(\S+)/);
+            remoteUrl = match ? match[1] : undefined;
+          } catch {
+            // ignore
+          }
+        }
       }
 
       // Push to remote if requested
@@ -188,6 +204,12 @@ export class GitAutomation {
     const cwd = working_dir || process.cwd();
 
     try {
+      // Ensure git repo exists first
+      const gitDir = path.join(cwd, '.git');
+      if (!fs.existsSync(gitDir)) {
+        await this.gitInit(cwd);
+      }
+
       // Check if gh CLI is available and authenticated
       await this.ghSpawn(['auth', 'status']);
 
@@ -214,9 +236,8 @@ export class GitAutomation {
 
       // Create remote repo via gh CLI
       const visFlag = visibility === 'private' ? '--private' : '--public';
-      const descFlag = description ? `--description="${description}"` : '';
       const args2 = ['repo', 'create', repo_name, visFlag];
-      if (descFlag) args2.push(descFlag);
+      if (description) args2.push(`--description=${description}`);
 
       await this.ghSpawn(args2);
 
@@ -264,7 +285,10 @@ export class GitAutomation {
         content: [
           {
             type: 'text',
-            text: `Remote repo creation failed: ${errorMsg}`,
+            text: JSON.stringify({
+              success: false,
+              error: errorMsg,
+            }, null, 2),
           },
         ],
         isError: true,
