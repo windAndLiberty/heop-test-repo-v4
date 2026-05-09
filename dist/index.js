@@ -226,6 +226,21 @@ class HEOPPlugin {
                 },
             },
             {
+                name: 'adopt_project',
+                description: '将现有项目纳入 HEOP 管理，扫描代码库并推断架构决策，跳过冷启动直接进入增量开发',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        project_id: { type: 'string', description: '项目唯一标识' },
+                        name: { type: 'string', description: '项目名称（默认使用目录名）' },
+                        working_dir: { type: 'string', description: '项目工作目录绝对路径' },
+                        description: { type: 'string', description: '项目描述' },
+                        tech_stack: { type: 'object', description: '可选：手动指定技术栈，如 {"language":"rust","framework":"axum"}' },
+                    },
+                    required: ['project_id', 'working_dir'],
+                },
+            },
+            {
                 name: 'github_create_structured_issue',
                 description: '当任务失败或状态机阻塞时，自动创建结构化Issue',
                 inputSchema: {
@@ -276,6 +291,8 @@ class HEOPPlugin {
                         return await this.gitAuto.createRemoteRepo(args);
                     case 'github_create_structured_issue':
                         return await this.issueAuto.createStructuredIssue(args);
+                    case 'adopt_project':
+                        return await this.adoptProject(args);
                     case 'project_status':
                         return await this.handleProjectStatus(args);
                     default:
