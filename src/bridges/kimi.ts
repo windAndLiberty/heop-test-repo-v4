@@ -6,9 +6,9 @@ import { ProvenanceLogger } from '../ssot/provenance.js';
 import { HEOPConfig } from '../index.js';
 
 /**
- * Kimi Bridge: 直接调用 Kimi API (OpenAI-compatible) 进行代码生成和增量开发
- * 不依赖 Claude Code CLI，直接通过 HTTP API 调用 Kimi 模型
- * 用于轻量级任务、快速代码生成、以及作为 Claude Code Bridge 的替代方案
+ * Kimi Bridge: 调用本地 kimi CLI 命令进行代码生成和增量开发
+ * 用户已在终端配置好默认模型 (kimi-for-coding)，直接执行 `kimi` 命令即可
+ * 不依赖 HTTP API 或 Claude Code CLI
  */
 
 export interface KimiInput {
@@ -18,7 +18,8 @@ export interface KimiInput {
   context_facts_query?: string;
   readonly_files?: string[];
   working_dir?: string;
-  model?: string; // 默认 'kimi-k2-0711-preview'
+  // model 参数保留但忽略，用户终端已配置好 kimi-for-coding
+  model?: string;
   temperature?: number;
   max_tokens?: number;
 }
@@ -43,8 +44,6 @@ export class KimiBridge {
   private store!: SSOTStore;
   private provenance!: ProvenanceLogger;
   private config: HEOPConfig;
-  private apiKey: string;
-  private baseUrl: string;
 
   constructor(storeOrConfig: SSOTStore | HEOPConfig, provenanceOrConfig?: ProvenanceLogger | HEOPConfig, config?: HEOPConfig) {
     if (config && (storeOrConfig as SSOTStore).getProject) {
@@ -56,11 +55,7 @@ export class KimiBridge {
       this.store = new SSOTStore(this.config.ssotDir);
       this.provenance = new ProvenanceLogger(this.config.ssotDir);
     }
-
-    // Kimi API configuration
-    // Supports both direct Kimi API and Kimi-through-Anthropic-proxy (Claude Code CLI mode)
-    this.apiKey = process.env.KIMI_API_KEY || process.env.ANTHROPIC_API_KEY || '';
-    this.baseUrl = process.env.KIMI_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://api.moonshot.cn/v1';
+    // 无需 API key / baseUrl，直接调用本地 kimi CLI
   }
 
   async execute(args: KimiInput): Promise<any> {
@@ -102,12 +97,12 @@ export class KimiBridge {
         readonly_files
       );
 
-      // Call Kimi API directly
-      const result = await this.callKimiAPI({
+      // Call kimi CLI directly (user has configured kimi-for-coding as default model)
+      const result = await this.callKimiCLI({
         goal,
         contextPackage,
         working_dir,
-        model: model || 'kimi-k2-0711-preview',
+        model: model || 'kimi-for-coding',
         temperature: temperature || 0.3,
         max_tokens: max_tokens || 8192,
       });
@@ -237,7 +232,7 @@ export class KimiBridge {
     return parts.join('\n');
   }
 
-  private async callKimiAPI(args: {
+  private async callKimiCLI(args: {
     goal: string;
     contextPackage: string;
     working_dir?: string;
@@ -245,41 +240,32 @@ export class KimiBridge {
     temperature: number;
     max_tokens: number;
   }): Promise<KimiOutput> {
-    const { goal, contextPackage, working_dir, model, temperature, max_tokens } = args;
+    const { goal, contextPackage, working_dir } = args;
 
-    // Build system prompt
-    const systemPrompt = `You are a software engineering agent. Your task is to generate or modify code based on the provided context.
+    // Build prompt for kimi CLI
+    const prompt = `You are a software engineering agent. Your task is to generate or modify code based on the provided context.
 Rules:
 1. Output files in the format: === FILE: path/to/file ===\n followed by file content
 2. Only modify/create files relevant to the task
 3. Respect existing architecture decisions (marked READ-ONLY)
-4. End with a summary of changes`;
+4. End with a summary of changes
 
-    // Build user prompt
-    const userPrompt = `## Task\n${goal}\n\n${contextPackage}\n\n## Working Directory\n${working_dir || 'Not specified'}\n\nGenerate the required code now.`;
+## Task
+${goal}
 
-    // Call Kimi API via curl (OpenAI-compatible format)
-    const requestBody = JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature,
-      max_tokens,
-    });
+${contextPackage}
+
+## Working Directory
+${working_dir || 'Not specified'}
+
+Generate the required code now.`;
 
     return new Promise((resolve, reject) => {
-      const curlArgs = [
-        '-s',
-        '-X', 'POST',
-        '-H', 'Content-Type: application/json',
-        '-H', `Authorization: Bearer ${this.apiKey}`,
-        '-d', requestBody,
-        `${this.baseUrl}/chat/completions`,
-      ];
-
-      const child = spawn('curl', curlArgs);
+      // 调用本地 kimi CLI，用户已配置默认模型为 kimi-for-coding
+      const child = spawn('kimi', [], {
+        cwd: working_dir || process.cwd(),
+        env: { ...process.env },
+      });
 
       let stdout = '';
       let stderr = '';
@@ -292,21 +278,18 @@ Rules:
         stderr += data.toString();
       });
 
+      // 发送 prompt 到 kimi CLI 的 stdin
+      child.stdin?.write(prompt);
+      child.stdin?.end();
+
       child.on('close', (code) => {
         if (code !== 0) {
-          reject(new Error(`Kimi API curl failed (exit ${code}): ${stderr}`));
+          reject(new Error(`kimi CLI failed (exit ${code}): ${stderr}`));
           return;
         }
 
         try {
-          const response = JSON.parse(stdout);
-          if (response.error) {
-            reject(new Error(`Kimi API error: ${response.error.message}`));
-            return;
-          }
-
-          const content = response.choices?.[0]?.message?.content || '';
-          const usage = response.usage;
+          const content = stdout;
 
           // Parse generated files from content
           const generatedFiles = this.parseGeneratedFiles(content);
@@ -316,19 +299,16 @@ Rules:
             success: true,
             generated_files: generatedFiles,
             summary,
-            usage: usage ? {
-              prompt_tokens: usage.prompt_tokens,
-              completion_tokens: usage.completion_tokens,
-              total_tokens: usage.total_tokens,
-            } : undefined,
+            // CLI 模式无 token 用量，标记为 undefined
+            usage: undefined,
           });
         } catch (parseError) {
-          reject(new Error(`Failed to parse Kimi API response: ${parseError}`));
+          reject(new Error(`Failed to parse kimi CLI response: ${parseError}`));
         }
       });
 
       child.on('error', (err) => {
-        reject(new Error(`Kimi API spawn error: ${err.message}`));
+        reject(new Error(`kimi CLI spawn error: ${err.message}`));
       });
     });
   }
@@ -361,6 +341,7 @@ Rules:
   /**
    * Quick code generation without full context assembly
    * Useful for simple tasks like "generate a README" or "create a config file"
+   * Uses local kimi CLI (model already configured by user)
    */
   async quickGenerate(args: {
     prompt: string;
@@ -368,56 +349,40 @@ Rules:
     model?: string;
     output_file?: string;
   }): Promise<string> {
-    const { prompt, working_dir, model, output_file } = args;
-
-    const requestBody = JSON.stringify({
-      model: model || 'kimi-k2-0711-preview',
-      messages: [
-        { role: 'system', content: 'You are a code generation assistant. Output only code, no explanations.' },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.2,
-      max_tokens: 4096,
-    });
+    const { prompt, working_dir, output_file } = args;
 
     return new Promise((resolve, reject) => {
-      const curlArgs = [
-        '-s',
-        '-X', 'POST',
-        '-H', 'Content-Type: application/json',
-        '-H', `Authorization: Bearer ${this.apiKey}`,
-        '-d', requestBody,
-        `${this.baseUrl}/chat/completions`,
-      ];
-
-      const child = spawn('curl', curlArgs);
+      // 调用本地 kimi CLI，用户已配置默认模型
+      const child = spawn('kimi', [], {
+        cwd: working_dir || process.cwd(),
+        env: { ...process.env },
+      });
 
       let stdout = '';
       child.stdout?.on('data', (data) => {
         stdout += data.toString();
       });
 
+      // 发送 prompt 到 kimi CLI 的 stdin
+      child.stdin?.write(prompt);
+      child.stdin?.end();
+
       child.on('close', (code) => {
         if (code !== 0) {
-          reject(new Error('Kimi quick generate failed'));
+          reject(new Error('kimi quick generate failed'));
           return;
         }
 
-        try {
-          const response = JSON.parse(stdout);
-          const content = response.choices?.[0]?.message?.content || '';
+        const content = stdout;
 
-          // Write to file if specified
-          if (output_file && working_dir) {
-            const filePath = path.join(working_dir, output_file);
-            fs.mkdirSync(path.dirname(filePath), { recursive: true });
-            fs.writeFileSync(filePath, content);
-          }
-
-          resolve(content);
-        } catch {
-          reject(new Error('Failed to parse Kimi response'));
+        // Write to file if specified
+        if (output_file && working_dir) {
+          const filePath = path.join(working_dir, output_file);
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
+          fs.writeFileSync(filePath, content);
         }
+
+        resolve(content);
       });
 
       child.on('error', reject);
