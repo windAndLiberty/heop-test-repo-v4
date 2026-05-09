@@ -58,6 +58,7 @@ export class GitAutomation {
     }
 
     const cwd = working_dir || process.cwd();
+    console.log(`[GitAutomation] milestoneCommit: cwd=${cwd}, project_id=${project_id}`);
 
     try {
       // Ensure git repo exists
