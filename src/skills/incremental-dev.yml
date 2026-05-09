@@ -1,0 +1,100 @@
+---
+name: incremental-dev
+description: "HEOP Skill: Execute incremental development task using Claude Code bridge"
+version: 1.0.0
+metadata:
+  heop:
+    trigger: "implement feature"
+    agent: "claude"
+    lifecycle_state: "BOOTSTRAPPED / INCREMENTAL_DEV"
+---
+
+# /incremental-dev Skill
+
+## Purpose
+Delegate an incremental development task to Claude Code with full SSOT context.
+
+## When to Use
+- Project is in BOOTSTRAPPED or INCREMENTAL_DEV state
+- User asks to implement a specific feature
+- Bug fix or refactoring task
+
+## Steps
+
+1. **Validate State**
+   - Check project state allows incremental dev
+   - Verify no other agent is running (maxConcurrentAgents: 1)
+
+2. **Assemble Context Package**
+   - Query SSOT for relevant facts:
+     ```sql
+     SELECT * FROM facts WHERE project_id = ? AND entity LIKE 'src/%' AND valid_until = 9999999999
+     ```
+   - Fetch architecture decisions:
+     ```sql
+     SELECT * FROM decisions WHERE project_id = ? ORDER BY created_at DESC
+     ```
+   - Get pending requirements:
+     ```sql
+     SELECT * FROM requirements WHERE project_id = ? AND status = 'PENDING'
+     ```
+
+3. **Call MCP Tool: claude_code_execute**
+   ```json
+   {
+     "project_id": "<project_id>",
+     "task_id": "task_<timestamp>",
+     "goal": "Implement OAuth2 login flow with JWT tokens",
+     "context_facts_query": "{\"entity\":\"src/auth\",\"attribute\":\"*\"}",
+     "readonly_files": ["src/auth/mod.rs", "Cargo.toml"]
+   }
+   ```
+
+4. **Process Output**
+   - Apply diff to working directory
+   - Run tests: `cargo test` or `npm test`
+   - Check coverage threshold
+
+5. **Update SSOT**
+   - Record new `code_states`
+   - Update task status: COMPLETED or FAILED
+   - If tests pass: update `test_status` fact
+
+6. **Git Commit**
+   - Generate Conventional Commit with decision references
+   - Example:
+     ```
+     feat(auth): implement OAuth2 login
+     
+     - Decision: #dec_003 (ed25519 for JWT signing)
+     - Requirement: #req_001 (OAuth2 login flow)
+     - Task: #task_042 (claude_code_execute)
+     - Coverage: 87%
+     ```
+
+## Constraints
+- Memory limit: 512M for Claude Code sub-agent
+- Timeout: 60 minutes
+- READ-ONLY access to `decisions` table for Claude Code
+- Must not modify global architecture decisions
+
+## Error Handling
+- If tests fail: create issue with test output
+- If diff conflicts: abort and notify user
+- If state machine blocks: create structured issue
+
+## Example Usage
+
+```
+User: "Add user authentication to the API"
+Hermes: "I'll delegate this to Claude Code with full context from SSOT."
+Hermes: [Calls claude_code_execute with assembled context]
+Claude Code: [Returns diff + test results]
+Hermes: "Feature implemented. Tests passing (87% coverage). Committed."
+```
+
+## Output Artifacts
+- Updated source files
+- Test results in SSOT
+- Git commit with references
+- Updated task record

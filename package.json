@@ -1,0 +1,43 @@
+{
+  "name": "hermes-engineering-os-plugin",
+  "version": "1.0.0",
+  "description": "HEOP - Hermes Engineering OS Plugin: SSOT, Lifecycle FSM, Agent Bridges, Git/Issue Automation, XAI Provenance",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/**/*.ts",
+    "test": "jest"
+  },
+  "keywords": [
+    "hermes",
+    "plugin",
+    "mcp",
+    "ssot",
+    "engineering",
+    "deepcode",
+    "claude-code"
+  ],
+  "author": "HEOP Team",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.11",
+    "ts-jest": "^29.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

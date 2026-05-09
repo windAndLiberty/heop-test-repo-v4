@@ -1,0 +1,78 @@
+---
+name: bootstrap-project
+description: "HEOP Skill: Bootstrap a new project from PRD using DeepCode bridge"
+version: 1.0.0
+metadata:
+  heop:
+    trigger: "new project"
+    agent: "deepcode"
+    lifecycle_state: "CREATED -> PLANNED"
+---
+
+# /bootstrap-project Skill
+
+## Purpose
+Trigger DeepCode bridge to generate project skeleton from PRD/UML documents.
+
+## When to Use
+- User provides a new PRD.md
+- Project state is CREATED or empty
+- No existing codebase for the project
+
+## Steps
+
+1. **Validate Inputs**
+   - Check `requirements_dir` exists and contains .md files
+   - Verify `project_id` is unique in SSOT
+
+2. **Initialize SSOT**
+   - Create `projects` record with state CREATED
+   - Parse PRD into `requirements` table entries
+
+3. **Call MCP Tool: deepcode_bootstrap**
+   ```json
+   {
+     "project_id": "<project_id>",
+     "requirements_dir": "/path/to/prd",
+     "constraints_json": "{\"lang\":\"rust\",\"framework\":\"axum\"}"
+   }
+   ```
+
+4. **Process Output**
+   - Extract `decisions` from DeepCode report
+   - Write decisions to SSOT with provenance
+   - Record initial `code_states`
+
+5. **Git Initialization**
+   - `git init` in project directory
+   - `git add . && git commit -m "feat: initial skeleton [HEOP #<task_id>]"`
+
+6. **FSM Transition**
+   - Lifecycle Engine evaluates: CREATED -> PLANNED
+   - If build succeeds: PLANNED -> BOOTSTRAPPED
+   - Auto-tag: `v0.1.0-skeleton`
+
+## Constraints
+- Memory limit: 1024M for DeepCode sub-agent
+- Timeout: 30 minutes
+- Max concurrent agents: 1 (2核4G safety)
+
+## Error Handling
+- If DeepCode fails: create structured issue with error log
+- If build fails: stay in PLANNED state, suggest fixes
+- If PRD is ambiguous: ask user for clarification
+
+## Example Usage
+
+```
+User: "Create a new e-commerce API project"
+Hermes: "I'll bootstrap this using DeepCode. Please provide PRD location."
+User: "PRD is at ~/projects/shop-api/PRD.md"
+Hermes: [Calls deepcode_bootstrap with requirements_dir="~/projects/shop-api"]
+```
+
+## Output Artifacts
+- `proj_<id>.db` — SSOT database
+- `report.json` — DeepCode architecture report
+- Git repo with initial skeleton
+- Decisions recorded in SSOT
