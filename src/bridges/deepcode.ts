@@ -417,26 +417,35 @@ Generate the project skeleton now.`;
         }
       });
 
-      child.stdin?.write(prompt);
-      child.stdin?.end();
-
       let output = '';
+      let finished = false;
 
       child.stdout?.on('data', (data) => {
         output += data.toString();
       });
 
-      child.on('close', (code) => {
-        if (output.trim()) {
-          resolve(output);
-        } else {
-          resolve(this.generateFallbackOutput(requirementsDir, constraintsJson));
+      child.stderr?.on('data', (data) => {
+        output += data.toString();
+      });
+
+      const finish = (result: string) => {
+        if (!finished) {
+          finished = true;
+          resolve(result);
         }
+      };
+
+      child.on('close', (code) => {
+        finish(output.trim() ? output : this.generateFallbackOutput(requirementsDir, constraintsJson));
       });
 
       child.on('error', () => {
-        resolve(this.generateFallbackOutput(requirementsDir, constraintsJson));
+        finish(this.generateFallbackOutput(requirementsDir, constraintsJson));
       });
+
+      // Write prompt after setting up listeners
+      child.stdin?.write(prompt);
+      child.stdin?.end();
     });
   }
   

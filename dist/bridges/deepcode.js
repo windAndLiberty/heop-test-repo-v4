@@ -353,23 +353,29 @@ Generate the project skeleton now.`;
                     KIMI_API_KEY: kimiApiKey,
                 }
             });
-            child.stdin?.write(prompt);
-            child.stdin?.end();
             let output = '';
+            let finished = false;
             child.stdout?.on('data', (data) => {
                 output += data.toString();
             });
+            child.stderr?.on('data', (data) => {
+                output += data.toString();
+            });
+            const finish = (result) => {
+                if (!finished) {
+                    finished = true;
+                    resolve(result);
+                }
+            };
             child.on('close', (code) => {
-                if (output.trim()) {
-                    resolve(output);
-                }
-                else {
-                    resolve(this.generateFallbackOutput(requirementsDir, constraintsJson));
-                }
+                finish(output.trim() ? output : this.generateFallbackOutput(requirementsDir, constraintsJson));
             });
             child.on('error', () => {
-                resolve(this.generateFallbackOutput(requirementsDir, constraintsJson));
+                finish(this.generateFallbackOutput(requirementsDir, constraintsJson));
             });
+            // Write prompt after setting up listeners
+            child.stdin?.write(prompt);
+            child.stdin?.end();
         });
     }
     generatePaperMd(requirementsDir, outputPath, constraintsJson) {
